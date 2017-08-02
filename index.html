@@ -1,0 +1,136 @@
+<!DOCTYPE HTML>
+<html>
+   <head>
+   <meta charset="utf-8">
+   <link href="./public/css/style.css" rel="stylesheet">
+   <link href="./public/css/bootstrap.min.css" rel="stylesheet">
+   <script src="./public/js/jquery.min.js"></script>
+   <script src="./public/js/bootstrap.min.js"></script>
+   <title>XingLong聊天室</title>
+      <script type="text/javascript">
+      	  var status = false;
+	      var ws = new WebSocket("ws://192.168.119.86:4000");
+	      // 当websocket创建成功时触发onopen事件
+	      ws.onopen = function(){
+	    	  //console.log("websocket创建成功！");
+	    	  ws.send('websocket');
+	    	  status = true; 
+	      };
+	      
+	      // 当客户端收到服务端发来的消息时触发onmessage事件
+	      ws.onmessage = function(e){
+	    	  data = e.data;
+	    	  try{
+	    		  var obj = eval('(' + e.data + ')');   // json  转对象
+	    		  //console.log(obj);
+	    		  if (obj.type == "1") {
+		    		  // 收到新用户进入群聊消息
+		    		  var id = 'contact-name-' + obj.data.key;
+		    		  var msg = obj.data.msg;
+		    		  str = '<div class="contact" id="' + id + '"><img src="./public/img/head.jpg" alt=""><span>' + msg + '</span></div>';	    		  
+		    		  $("#userList").append(str);  
+		    	  } else if(obj.type == "2") {	    		  
+		    		  // 收到用户离开群聊消息
+		    		  var id = 'contact-name-' + obj.data.key;
+		    		  $('#'+id).remove();  
+		    	  } else if(obj.type == 3) {
+		    		  // 首次进入群聊收到群聊用户列表		    		 
+		    		  var str = '';
+		    		  var len = obj.data.length;
+		    		  for( i = 0; i < len ; i++){
+		    			  var id = 'contact-name-' + obj.data[i].key;
+			    		  var msg = obj.data[i].msg; 
+			    		  str += '<div class="contact" id="' + id + '" ><img src="./public/img/head.jpg" alt=""><span>' + msg + '</span></div>';
+		    		  }
+		    		  $("#userList").html(str);
+		    	  }	    		  
+	    	  }catch(e){
+	    		  // 收到消息
+	    		  var str = $("#showchat .chat-thread").html();
+	    		  str += '<li class ="left" style="word-break:break-all;">' + data + '</li>';
+	    		  $("#showchat .chat-thread").html(str);  
+	    		  overflow();	    		  
+	    	  }    
+	      };
+	      
+	      // 如果出现连接，处理，接收，发送数据失败的时候触发onerror事件
+	      ws.onerror = function(){
+	          console.log("出现错误！");
+	      };	
+	      
+	      // 当收到服务端发送的关闭连接的请求触发onclose事件
+	      ws.onclose = function()
+          { 
+	    	 status = false;
+             alert("服务端关闭连接！");
+          };
+          function sendMessage()
+          {
+              if( status == false ){
+            	  alert("服务端未连接或已关闭！");
+              } else {
+                  var msg = $("#sendMsg").val().trim();
+                  if(msg == ""){
+                  	alert("发送消息不能为空！");       	
+                  } else {
+                	  ws.send(msg);
+                	  var str = $("#showchat .chat-thread").html();
+            		  str += '<li class ="right" style="word-break:break-all;">我：' + msg + '</li>';
+            		  $("#showchat .chat-thread").html(str); 
+            		  $("#sendMsg").val('');
+            		  overflow();
+                  } 
+              }  
+          }
+          // 设置滚动调到底部
+      	 function overflow(){
+      		var showchat = document.getElementById('showchat');
+      		showchat.scrollTop = showchat.scrollHeight;
+      	 }
+      </script>
+      <style>
+		.contact{
+			font-size: 16px;
+		}
+		.contact img{
+			width: 54px;
+			height:54px; 
+			margin-bottom: 12px;
+			border-radius: 30px;
+			-webkit-border-radius: 30px;
+			-moz-border-radius: 30px; 
+			margin-left: 16px;
+		}   
+      </style>
+   </head>
+   <body>
+		<div class="container" style= "margin-top: 100px;">
+			<div class="row" >
+				<div class="col-md-4 column" style="padding-right: 0px;">
+					<div class="panel panel-default" style="border-right-width: 0px;border-radius: 4px 0 0 4px;">
+						<div class="panel-heading" style="background-color: #e5e5e5;" >
+							<h4 class="panel-title text-center" style="font-size:20px;height:40px;padding-top:8px;">群聊在线用户列表</h4>
+						</div>												
+						<div id="userList" class="panel-heading" style="background-color: #e5e5e5;height: 600px;overflow-y:auto;"></div>												
+					</div>
+				</div>
+				<div class="col-md-8 column" style="padding-left: 0px;">
+					<div class="panel panel-default" style="border-radius:0 4px 4px; 0 ">
+						<div class="panel-heading">
+							<h3 class="panel-title text-center" style="font-size:20px;height:40px;padding-top:8px;">XingLong聊天室</h3>
+						</div>						
+						<div id="showchat" class="panel-body" style="height: 460px;background-color:rgba(223, 240, 216, 0.64);overflow-y:auto;">																	
+							<ul class="chat-thread"></ul>
+						</div>
+						<div class="panel-body" style="border-top-style:solid;border-top-width:1px;border-color:rgb(221, 221, 221);padding: 10px 20px 0 20px;">							
+							<textarea id="sendMsg"name="comment" maxlength="100000" required  style="outline:none;border:0px;height: 80px;width: 100%;resize: none;"></textarea>							
+						</div>		
+						<div class="panel-body" style="border: 0px;padding-top: 0px;">
+							<button type="button" style="float:right;padding-left: 20px;padding-right: 20px;margin-right: 20px;"class="btn btn-default" onclick="sendMessage()">发送</button>													
+						</div>					
+					</div>
+				</div>				
+			</div>				
+		</div>  
+   </body>
+</html>
