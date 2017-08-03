@@ -55,7 +55,7 @@ class WS
                         $this->log("连接到客户端： " . $client);
                     }
                 } else {
-                    $bytes = @socket_recv($socket,$buffer,204800,0);
+                    $bytes = @socket_recv($socket,$buffer,4096,0);
                     $opcode = ord($buffer[0]) & 15;
                     if($opcode == 8) {
                         $this->close($socket);                        
@@ -73,7 +73,8 @@ class WS
                         $this->rototSend($socket, $buffer);     // 系统机器人回复
                     } else if( $this->client[$key]['type'] == 2 ){
                         $this->massSend($socket,$key,$buffer);  // 群发给其他客户端
-                    } 
+                    }
+                    unset($buffer);
                 }    
             }
         }
@@ -177,7 +178,10 @@ class WS
      * @param $type   数据编码类型
      * @return string 处理后的帧信息
      */    
-    private function frame($msg, $byte = 125 ,$type = 'utf8') {
+    private function frame($msg,$type = 'utf8') {
+        if($msg === false){
+            return '';
+        }
         $length = strlen($msg);
         if($length <= 125) {
             return "\x81".chr($length).$msg;
@@ -185,14 +189,61 @@ class WS
             //  2^16 - 1
             return "\x81".chr(126).pack("n", $length).$msg;      // 数据长度使用16进制填空两个字节（16位）     ‘n’： An unsigned short in 
         } else if($length <= 4294967295) {
-            // 最大数据长度不能超过 2^32 - 1
-            return "\x81".char(127).pack("xxxxN", $length).$msg; // 数据长度使用16进制填空八个字节 （32位）      ‘N’： An unsigned long in
+            // 最大数据长度不能超过 2^32 - 1  文件以4G了
+            return "\x81".chr(127).pack("xxxxN", $length).$msg; // 数据长度使用16进制填空八个字节 （32位）      ‘N’： An unsigned long in
         } else {
             // 分片处理
-            return $this->sliceFrame($msg,$byte,$type);
+            $result = $this->splitZh($msg,4294967295,$type);
+            return "\x81".chr(127).pack("xxxxN", 4294967295).$result[0].$this->frame($result[1],$type);
         }
     }
     
+    /**
+     * 中英文混合字符串   按字节分割出一串最长的字符串，并返回剩下的
+     * @param $str      分割字符字符串
+     * @param $byte     分割字节数大小
+     * @param $type     字符串编码
+     * @return string[] 分割出的字符和剩下的字符串
+     */
+    private function splitZh($str,$byte = 125, $type = 'utf8') {
+        $result = array();
+        if( $type == 'utf8' ){
+            $len_byte = 3;
+            $len_zh = mb_strlen($str,'utf8');
+        } else if ($type == 'gbk'){
+            $len_byte = 2;
+            $len_zh = mb_strlen($str,'gbk');
+        } else if ($type == 'gb2312'){
+            $len_byte = 2;
+            $len_zh = mb_strlen($str,'gb2312');
+        }
+        for( $i = 0, $start = 0, $end = 0; $i<$len_zh; $i++) {
+            $len = $end - $start;
+            if (!preg_match("/^[\x7f-\xff]+$/", $str[$end])) { //兼容gb2312,utf-8
+                // 英文字符
+                if( $len + 1 > $byte ){
+                    $result[] = substr($str, $start, $len);
+                    $result[] = substr($str, $end);
+                    return $result;
+                }
+                $end++;
+            } else {
+                // 中文字符
+                if( $len + $len_byte >$byte ){
+                    $result[] = substr($str, $start, $len);
+                    $result[] = substr($str, $end);
+                    return $result;
+                }
+                $end += $len_byte;
+            }
+            if( $i == $len_zh - 1 && $start < strlen($str)){
+                $result[] = substr($str, $start);
+                $result[] = false;
+            }
+        }
+        return $result;
+    }
+        
     /**
      * 分片封装数据成帧       （发送数据处理）
      * @param $msg    需要发送的数据
@@ -200,18 +251,18 @@ class WS
      * @param $type   数据编码类型
      * @return string 处理后的帧信息
      */
-    private function sliceFrame($msg , $byte = 125 ,$type = 'utf8') {   
-         $a = $this->arr_split_zh($msg, $byte,$type);
-         if (count($a) == 1) {
+    private function sliceFrame($msg , $byte = 125 ,$type = 'utf8') {
+        $a = $this->arr_split_zh($msg, $byte,$type);
+        if (count($a) == 1) {
             return "\x81" . chr(strlen($a[0])) . $a[0];
-         }
-         $ns = "";
-         foreach ($a as $o) {
+        }
+        $ns = "";
+        foreach ($a as $o) {
             $ns .= "\x81" . chr(strlen($o)) . $o;
-         }
-         return $ns;         
+        }
+        return $ns;
     }
-         
+    
     /**
      * 中英文混合字符串  按字节分割成数组
      * @param $str      分割字符字符串
@@ -248,9 +299,9 @@ class WS
                 }
                 $end += $len_byte;
             }
-            if( $i == $len_zh - 1 && $start != $end){
+            if( $i == $len_zh - 1 && $start < strlen($str)){
                 $result[] = substr($str, $start);
-            }
+            }            
         }
         return $result;
     }
